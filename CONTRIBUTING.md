@@ -15,7 +15,7 @@ python -m venv .venv
 
 自动化测试使用受控数据和模拟设备，不需要手机、ADB、Root 或账号。演示模式可检查界面和保存流程，数据会标明为模拟。
 
-连接真机或制作便携包时，按 [README](README.md) 准备 Google 官方 Android Platform Tools。构建命令为 `powershell -ExecutionPolicy Bypass -File .\build.ps1 -OutputRoot dist/v0.1.1`；若输出目录已存在，换一个新目录，构建不会覆盖旧程序或记录。请保留第三方许可证和源码。运行或分享自行构建的版本前，应验证独立启动、保存与历史回看。项目中的截图烟测脚本可能依赖本机字体等条件，因此基础 CI 不执行这些脚本。
+连接真机或制作便携包时，按 [本地开发与构建](docs/development.md) 准备 Google 官方 Android Platform Tools，并使用其中的构建和打包命令。构建不会覆盖旧程序或记录，再次构建请换一个新输出目录。请保留第三方许可证和源码。运行或分享自行构建的版本前，应验证独立启动、保存与历史回看。项目中的截图烟测脚本可能依赖本机字体等条件，因此基础 CI 不执行这些脚本。
 
 ## 代码位置
 
