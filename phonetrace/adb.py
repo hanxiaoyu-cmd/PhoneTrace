@@ -16,6 +16,11 @@ class AdbError(RuntimeError):
 
 
 _PACKAGE = re.compile(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+\Z")
+_REQUESTED_LAYER = re.compile(
+    r"RequestedLayerState\{(?P<name>.+?#[0-9]+)"
+    r"(?: (?:parentId|relativeParentId|layerStack)=[0-9]+"
+    r"| z=-?[0-9]+| mirrorId=\{(?:[0-9]+,)*\}| !handle)*\}\Z"
+)
 
 
 def validate_package(package: str) -> str:
@@ -28,6 +33,18 @@ def validate_package(package: str) -> str:
 def layer_matches_package(layer: str, package: str) -> bool:
     return bool(re.search(r"(?<![A-Za-z0-9_.])" + re.escape(package)
                           + r"(?![A-Za-z0-9_.])", layer))
+
+
+def normalize_layer_name(line: str) -> str:
+    """Recover the exact latency-query name from a known SF debug wrapper."""
+    # Android 16 --list prints RequestedLayerState::getDebugString(), while
+    # --latency still compares Layer::getName(). The #sequence is part of name.
+    # Only strip the documented suffix; preserve unknown formats unchanged.
+    # https://android.googlesource.com/platform/frameworks/native/+/refs/heads/android16-release/services/surfaceflinger/SurfaceFlinger.cpp
+    # https://android.googlesource.com/platform/frameworks/native/+/refs/heads/main/services/surfaceflinger/FrontEnd/RequestedLayerState.cpp
+    line = line.strip()
+    match = _REQUESTED_LAYER.fullmatch(line)
+    return match.group("name") if match else line
 
 
 def validate_endpoint(endpoint: str) -> str:
@@ -130,10 +147,11 @@ class AdbClient:
         if package:
             package = validate_package(package)
         output = self.shell(serial, "dumpsys SurfaceFlinger --list", timeout=8)
-        return sorted({line.strip() for line in output.splitlines()
-                       if line.strip() and "permission denial" not in line.lower()
-                       and "permission denied" not in line.lower()
-                       and (not package or layer_matches_package(line, package))})
+        names = (normalize_layer_name(line) for line in output.splitlines())
+        return sorted({name for name in names
+                       if name and "permission denial" not in name.lower()
+                       and "permission denied" not in name.lower()
+                       and (not package or layer_matches_package(name, package))})
 
     def device_info(self, serial: str) -> dict:
         # Deliberately query an allowlist rather than saving getprop's full output.

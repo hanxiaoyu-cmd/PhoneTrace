@@ -170,6 +170,11 @@ class SessionRecorder:
                           "power_w": "whole-device battery discharge W", "current_ma": "signed mA",
                           "voltage_v": "V", "battery_pct": "%", "battery_temp_c": "°C",
                           "cpu_pct": "%", "app_mem_mb": "MiB", "elapsed_s": "s"},
+            "electrical_sources": {
+                "current_source": "sysfs.battery.current_now_uA or BatteryService.batteryCurrentMicroamps; raw uA converted to signed mA",
+                "voltage_source": "sysfs.battery.voltage_now_uV or BatteryService.voltage_mV; converted to V",
+                "current_sign": "BatteryService: positive charging, negative discharging; sysfs: driver raw sign",
+            },
         }
         self._samples: list[Sample] = []
         self._started_monotonic = time.monotonic()
@@ -256,7 +261,7 @@ def _sample_from_record(record: Any) -> Sample | None:
     data["elapsed_s"] = elapsed
     for key in _NUMERIC_FIELDS:
         data[key] = _number(data.get(key))
-    for key in ("layer", "fps_source", "power_source"):
+    for key in ("layer", "fps_source", "power_source", "current_source", "voltage_source"):
         if key in data and not isinstance(data[key], str):
             data[key] = ""
     data["plugged"] = data.get("plugged") if isinstance(data.get("plugged"), bool) else None

@@ -33,6 +33,8 @@ class Sample:
     layer: str = ""
     notes: list[str] = field(default_factory=list)
     frame_intervals_ms: list[float] = field(default_factory=list)
+    current_source: str = "unavailable"
+    voltage_source: str = "unavailable"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

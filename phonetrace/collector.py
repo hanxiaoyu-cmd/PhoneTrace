@@ -5,6 +5,9 @@ Sources and semantics:
   https://android.googlesource.com/platform/frameworks/native/+/master/services/surfaceflinger/FrameTracker.cpp
 * Linux power_supply: current_now in microamps; voltage_now in microvolts.
   https://docs.kernel.org/power/power_supply_class.html
+* BatteryService's read-only `get -f current_now` refreshes HealthInfo and emits
+  batteryCurrentMicroamps (positive charging, negative discharging).
+  https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/BatteryService.java
 
 Frame intervals describe observed presents of the selected game's layer. They do
 not measure input latency, GPU render time, or reconstruct missing frame history.
@@ -56,6 +59,17 @@ def _number(text: str) -> float | None:
         return None
     value = float(text)
     return value if math.isfinite(value) else None
+
+
+def _current_microamps(text: str) -> int | None:
+    """Both supported sources specify integer microamps, never guessed units."""
+    text = text.strip()
+    if not re.fullmatch(r"-?[0-9]{1,12}", text):
+        return None
+    value = int(text)
+    # Reject sentinel values and implausible readings while retaining a real
+    # zero in the raw-current field. Zero alone cannot validate load power.
+    return value if abs(value) <= 100_000_000 else None
 
 
 class Collector:
@@ -110,10 +124,19 @@ class Collector:
     def _command(self, include_memory: bool = True) -> str:
         reads = {
             "FRAMES": ("dumpsys SurfaceFlinger --latency " + shlex.quote(self._layer)) if self._layer else ":",
-            "BATTERY": "dumpsys battery",
-            "CURRENT": "cat /sys/class/power_supply/battery/current_now 2>/dev/null",
+            # Fall back only when the sysfs read fails or is empty; never replace
+            # a valid zero or reinterpret current units from its magnitude.
+            # Refresh precedes the battery dump so status/voltage use the updated
+            # HealthInfo too. `get -f` does not freeze/override battery state.
+            "CURRENT": (
+                "if _pt_current=$(cat /sys/class/power_supply/battery/current_now 2>/dev/null) "
+                '&& [ -n "$_pt_current" ]; then printf \'%s\\n\' "$_pt_current"; '
+                "else printf '\\n__PHONETRACE_SERVICE_CURRENT__\\n'; "
+                "cmd battery get -f current_now 2>/dev/null; fi"
+            ),
             "VOLTAGE": "cat /sys/class/power_supply/battery/voltage_now 2>/dev/null",
             "SYS_STATUS": "cat /sys/class/power_supply/battery/status 2>/dev/null",
+            "BATTERY": "dumpsys battery",
             "CPU": "cat /proc/stat 2>/dev/null",
         }
         if include_memory:
@@ -214,30 +237,43 @@ class Collector:
         voltage_uv = _number(sections.get("VOLTAGE", ""))
         if voltage_uv is not None and 1_000_000 <= voltage_uv <= 20_000_000:
             sample.voltage_v = voltage_uv / 1_000_000.0
+            sample.voltage_source = "sysfs.battery.voltage_now_uV"
         else:
             # dumpsys BatteryService reports mV; this is an explicit source unit,
             # not a magnitude-based guess for the sysfs field.
             voltage_mv = _number(data.get("voltage", ""))
             if voltage_mv is not None and 1000 <= voltage_mv <= 20_000:
                 sample.voltage_v = voltage_mv / 1000.0
-        current_ua = _number(sections.get("CURRENT", ""))
-        if current_ua is not None and abs(current_ua) <= 100_000_000:
+                sample.voltage_source = "BatteryService.voltage_mV"
+        current_ua = _current_microamps(sections.get("CURRENT", ""))
+        if current_ua is not None:
             sample.current_ma = current_ua / 1000.0  # Retain the driver's raw sign.
+            sample.current_source = "sysfs.battery.current_now_uA"
+        else:
+            current_ua = _current_microamps(sections.get("SERVICE_CURRENT", ""))
+            if current_ua is not None:
+                sample.current_ma = current_ua / 1000.0
+                sample.current_source = "BatteryService.batteryCurrentMicroamps"
         sys_status = sections.get("SYS_STATUS", "").strip().lower()
         discharging = data.get("status") == "3" and data.get("present", "true").lower() != "false"
         simulated = "updates stopped" in sections.get("BATTERY", "").lower()
         contradiction = sys_status in {"charging", "full", "not charging"}
+        service_sign_conflict = (sample.current_source == "BatteryService.batteryCurrentMicroamps"
+                                 and sample.current_ma is not None and sample.current_ma > 0)
         if (sample.plugged is False and discharging and not simulated and not contradiction
+                and not service_sign_conflict
                 and sample.current_ma is not None and sample.voltage_v is not None
                 and sample.current_ma != 0):
             sample.power_w = abs(sample.current_ma) * sample.voltage_v / 1000.0
-            sample.power_source = "battery.current_now_uA × battery_voltage (discharging)"
+            sample.power_source = f"{sample.current_source} × {sample.voltage_source} (discharging)"
         elif sample.plugged:
             sample.notes.append("手机接通电源；电池电流不能代表整机游戏功耗，功耗留空")
         elif simulated:
             sample.notes.append("系统电池信息处于模拟状态，无法验证放电，功耗留空")
         elif sample.plugged is not False or not discharging or contradiction:
             sample.notes.append("无法确认手机处于未接电的放电状态，功耗留空")
+        elif service_sign_conflict:
+            sample.notes.append("系统电流为正值（充电）但电池状态为放电，读数不一致，功耗留空")
         else:
             sample.notes.append("电池电流 / 电压不可读取或读数无效，功耗留空")
 

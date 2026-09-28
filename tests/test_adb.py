@@ -4,7 +4,9 @@ import subprocess
 import unittest
 from unittest.mock import patch
 
-from phonetrace.adb import AdbClient, AdbError, layer_matches_package, validate_endpoint
+from phonetrace.adb import (
+    AdbClient, AdbError, layer_matches_package, normalize_layer_name, validate_endpoint,
+)
 
 
 class AdbTests(unittest.TestCase):
@@ -87,6 +89,41 @@ DISCONNECTED offline transport_id:5
         self.assertEqual(info["android_version"], "16")
         self.assertNotIn("imei", shell.call_args.args[1].lower())
         self.assertNotIn("serialno", shell.call_args.args[1].lower())
+
+    def test_android16_debug_layer_names_preserve_name_and_sequence(self):
+        name = "abc123 SurfaceView[com.example.game/.Main](BLAST)#42"
+        suffixes = [
+            "", " parentId=41", " z=-2", " relativeParentId=40",
+            " parentId=41 relativeParentId=40 mirrorId={2,3,} !handle z=-2 layerStack=1",
+        ]
+        for suffix in suffixes:
+            with self.subTest(suffix=suffix):
+                self.assertEqual(normalize_layer_name(f"RequestedLayerState{{{name}{suffix}}}"), name)
+        # A name may itself contain braces, spaces and text resembling metadata.
+        embedded = "SurfaceView[com.example.game/.Main] parentId=7 {child}#45"
+        self.assertEqual(normalize_layer_name(f"RequestedLayerState{{{embedded} parentId=41}}"), embedded)
+
+    def test_layer_list_normalizes_before_filtering_and_deduplicates(self):
+        selected = "abc123 SurfaceView[com.example.game/.Main](BLAST)#42"
+        output = "\n".join([
+            f"RequestedLayerState{{{selected} parentId=41}}", selected,
+            "RequestedLayerState{SurfaceView[com.example.game.other/.Main]#44 parentId=43}",
+            "RequestedLayerState{SurfaceView[com.example.game2/.Main]#46 parentId=45}",
+            "Permission Denial: can't dump SurfaceFlinger", "",
+        ])
+        with patch.object(self.client, "shell", return_value=output):
+            self.assertEqual(self.client.layers("serial", "com.example.game"), [selected])
+
+    def test_plain_names_and_unrecognized_wrappers_are_not_rewritten(self):
+        names = [
+            "SurfaceView[com.example.game/.Main](BLAST)#42",
+            "SurfaceView - com.example.game/.Main@abc123",
+            "RequestedLayerState{SurfaceView[com.example.game/.Main]#42 futureField=1}",
+            "RequestedLayerState{SurfaceView[com.example.game/.Main]#42 parentId=41",
+        ]
+        for name in names:
+            with self.subTest(name=name):
+                self.assertEqual(normalize_layer_name(name), name)
 
 
 if __name__ == "__main__":

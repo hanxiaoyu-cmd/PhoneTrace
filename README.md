@@ -6,7 +6,7 @@
 
 A free, open-source Windows desktop recorder for Android game performance, with live charts, local reports, and transparent measurement methods.
 
-[下载 Windows 便携版](https://github.com/hanxiaoyu-cmd/PhoneTrace/releases/tag/v0.1.0) · [快速上手](docs/quick-start.md) · [指标与准确性](docs/accuracy.md) · [验证记录](VALIDATION.md)
+[下载 Windows 便携版](https://github.com/hanxiaoyu-cmd/PhoneTrace/releases/tag/v0.1.1) · [快速上手](docs/quick-start.md) · [指标与准确性](docs/accuracy.md) · [验证记录](VALIDATION.md)
 
 ![帧迹 PhoneTrace 桌面界面，图中为演示模式的模拟数据](docs/images/desktop-demo.png)
 
@@ -21,7 +21,7 @@ A free, open-source Windows desktop recorder for Android game performance, with 
 | **准确优先** | 游戏图层呈现时间戳用于计算 FPS；功耗仅在确认电池放电时计算；记录数据源、采集覆盖情况和警告，缺失值保留为空。 |
 | **数据归你** | 数据保存在电脑本地，报告离线可打开；流式写入保留已采集数据，便于在断连或中断后复核。 |
 
-> v0.1.0 为预览版，已验证桌面程序启动、模拟采集、保存与历史回看流程，**尚未完成手机真机验证**。不同 Android / 小米 HyperOS 版本开放的读取权限不同，具体可用指标以连接结果为准。“准确优先”是实现原则，当前不承诺实测精度或仪器级测量能力。
+> 已在一台小米 Android 16 手机的原神场景验证游戏图层帧率读取，并确认系统电池服务可读取电流。**尚未完成拔线放电功率的真机验证或参考仪器校准**，其他机型仍需适配验证。不同 Android / HyperOS 版本开放的接口不同；“准确优先”是实现原则，不代表仪器级测量能力。
 
 ## 三步开始
 
@@ -43,7 +43,7 @@ A free, open-source Windows desktop recorder for Android game performance, with 
 | 帧时间 / P95 | 新观测帧间隔的平均值 / 第 95 百分位，单位 ms |
 | 慢帧 | 观测帧间隔大于 50 ms 的次数，不等同于其他工具的 Jank 定义 |
 | 功耗估计 W | 确认未接外部电源且正在放电时，电池电压 × 电流绝对值 |
-| 电流 mA / 电压 V | 电池节点报告的值；电流保留驱动原始符号 |
+| 电流 mA / 电压 V | 优先读取电池节点；受限时尝试系统电池服务。保留电流符号和来源 |
 | 电量 % / 电池温度 ℃ | Android 电池服务或电池节点报告的值 |
 | CPU % | 可读取时的整机 CPU 使用率，非游戏进程独占使用率 |
 | 应用内存 MiB | 可读取时的游戏 PSS 内存，每 5 秒采样 |
@@ -93,16 +93,16 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pytest -q
 
 # 构建 Windows 便携程序
-.\build.ps1
+.\build.ps1 -OutputRoot dist/v0.1.1
 
 # 生成完整 ZIP 便携包与 SHA-256 校验文件
-.\.venv\Scripts\python.exe scripts/package_release.py
+.\.venv\Scripts\python.exe scripts/package_release.py --dist-root dist/v0.1.1
 
 # 以模拟数据体验采集，保存到独立测试目录
 .\.venv\Scripts\python.exe main.py --demo --demo-seconds 10 --data-dir test-output/demo
 ```
 
-构建输出为 `dist/PhoneTrace/PhoneTrace.exe`。便携包中的 `source` 目录也提供源码和构建资源。验证项目及尚未验证的范围见 [VALIDATION.md](VALIDATION.md)。
+以上命令输出为 `dist/v0.1.1/PhoneTrace/PhoneTrace.exe`。构建会拒绝覆盖已有程序目录，以保护运行中的软件和用户记录；再次构建请指定新的输出目录。便携包中的 `source` 目录也提供源码和构建资源。验证项目及尚未验证的范围见 [VALIDATION.md](VALIDATION.md)。
 
 ## 反馈与贡献
 

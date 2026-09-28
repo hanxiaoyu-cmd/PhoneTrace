@@ -84,6 +84,30 @@ class RecorderTests(unittest.TestCase):
         self.assertEqual(summary["slow_frames"], 1)
         self.assertAlmostEqual(summary["frame_observed_duration_s"], .14)
 
+    def test_electrical_sources_round_trip_and_old_records_remain_readable(self):
+        recorder = SessionRecorder(self.root, SessionConfig("phone", "com.game"), {})
+        recorder.append(sample(0, current_ma=500, voltage_v=4, plugged=True,
+                               current_source="BatteryService.batteryCurrentMicroamps",
+                               voltage_source="BatteryService.voltage_mV"))
+        recorder.finish()
+        with (recorder.path / "samples.csv").open(encoding="utf-8-sig", newline="") as handle:
+            row = next(csv.DictReader(handle))
+        self.assertEqual(row["current_source"], "BatteryService.batteryCurrentMicroamps")
+        self.assertEqual(row["voltage_source"], "BatteryService.voltage_mV")
+        self.assertEqual(row["power_w"], "")
+        metadata = json.loads((recorder.path / "metadata.json").read_text(encoding="utf-8"))
+        self.assertIn("positive charging", metadata["electrical_sources"]["current_sign"])
+        old = sample(1, current_ma=-750, voltage_v=4).to_dict()
+        del old["current_source"], old["voltage_source"]
+        with (recorder.path / "samples.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(old) + "\n")
+        _, loaded = load_session(recorder.path)
+        self.assertEqual(loaded[0].current_source, "BatteryService.batteryCurrentMicroamps")
+        self.assertEqual(loaded[0].voltage_source, "BatteryService.voltage_mV")
+        self.assertEqual(loaded[1].current_source, "unavailable")
+        self.assertEqual(loaded[1].voltage_source, "unavailable")
+        self.assertEqual(loaded[1].current_ma, -750)
+
     def test_reopen_disconnected_session_and_recover_incomplete_tail(self):
         recorder = SessionRecorder(self.root, SessionConfig("phone", "com.game"), {})
         recorder.append(sample(0, plugged=False, power_w=4))

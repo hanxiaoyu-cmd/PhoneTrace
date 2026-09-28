@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from .charts import TimeSeriesChart, elapsed_label
 from .models import Device, Sample
+from . import __version__
 
 
 STYLE = """
@@ -120,7 +121,7 @@ class MainWindow(QMainWindow):
         self._history_rows: list[dict] = []
         self._sample_count = 0
         self._demo_recording = False
-        self.setWindowTitle("PhoneTrace · 手机游戏性能记录")
+        self.setWindowTitle(f"PhoneTrace {__version__} · 手机游戏性能记录")
         self.resize(1320, 920)
         self.setMinimumSize(900, 650)
         self.setStyleSheet(STYLE)
@@ -296,6 +297,10 @@ class MainWindow(QMainWindow):
             self.metric_labels[key] = value
             metrics.addWidget(frame, 1)
         layout.addLayout(metrics)
+        self.availability_label = text_label("", "muted", True)
+        self.availability_label.setStyleSheet("color: #efc57f;")
+        self.availability_label.hide()
+        layout.addWidget(self.availability_label)
 
         charts = QGridLayout()
         charts.setSpacing(12)
@@ -599,8 +604,22 @@ class MainWindow(QMainWindow):
         self._set_sample_details(sample)
 
     def _set_sample_details(self, sample: Sample):
+        missing = []
+        if sample.fps is None:
+            reason = next((note for note in sample.notes if "帧" in note), "尚未获得有效游戏帧时间，请检查游戏包名和图层。")
+            missing.append("帧率：" + reason)
+        if sample.power_w is None:
+            if sample.plugged is True:
+                reason = "外部电源供电中；请用无线调试连接并断开外部电源后测量。当前电池净电流不代表整机功率。"
+            else:
+                reason = next((note for note in sample.notes if any(word in note for word in ("功耗", "电流", "放电"))), "等待有效电流、电压和未接电的放电状态。")
+            missing.append("功率：" + reason)
+        self.availability_label.setText("\n".join(missing))
+        self.availability_label.setVisible(bool(missing))
+        self.metric_labels["fps"].setToolTip(next((item for item in missing if item.startswith("帧率：")), sample.fps_source))
+        self.metric_labels["power_w"].setToolTip(next((item for item in missing if item.startswith("功率：")), sample.power_source))
         self.detail_label.setText(f"帧耗时 {number(sample.frame_time_ms)} ms    P95 {number(sample.frame_p95_ms)} ms    本轮慢帧 {number(sample.slow_frames, 0)}    原始电流 {number(sample.current_ma, 0)} mA    电压 {number(sample.voltage_v, 3)} V")
-        self.source_label.setText(f"帧率来源：{sample.fps_source}  ·  功耗来源：{sample.power_source}" + (f"\n图层：{sample.layer}" if sample.layer else ""))
+        self.source_label.setText(f"帧率来源：{sample.fps_source}  ·  功耗来源：{sample.power_source}\n电流来源：{getattr(sample, 'current_source', 'unavailable')}" + (f"\n图层：{sample.layer}" if sample.layer else ""))
         self.notes_label.setText(" · ".join(sample.notes) if sample.notes else "采样数据已写入电脑；缺失项显示 —。")
 
     def reset_charts(self):
@@ -610,6 +629,9 @@ class MainWindow(QMainWindow):
             chart_widget.clear()
         for label in self.metric_labels.values():
             label.setText("—")
+            label.setToolTip("")
+        self.availability_label.clear()
+        self.availability_label.hide()
         self.elapsed_label.setText("00:00")
         self.samples_label.setText("0 个采样点")
         self.detail_label.setText("帧耗时 — ms    P95 — ms    慢帧 —    电流 — mA    电压 — V")

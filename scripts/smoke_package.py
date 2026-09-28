@@ -1,6 +1,7 @@
 """Verify the portable executable in isolation from the Python environment."""
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import subprocess
@@ -8,7 +9,16 @@ import time
 from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
-exe = root / "dist" / "PhoneTrace" / "PhoneTrace.exe"
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--dist-root", default="dist", help="Build output directory, relative to the project or absolute (default: dist)")
+args = parser.parse_args()
+dist = Path(args.dist_root)
+dist = (dist if dist.is_absolute() else root / dist).resolve()
+if dist == root or not dist.is_relative_to(root):
+    parser.error("--dist-root must be a subdirectory of this project")
+exe = dist / "PhoneTrace" / "PhoneTrace.exe"
+if not exe.is_file():
+    parser.error(f"Portable executable not found: {exe}. Run build.ps1 with this output directory first.")
 output = root / "test-output" / ("packaged-" + str(time.time_ns()))
 output.mkdir(parents=True)
 env = dict(os.environ)

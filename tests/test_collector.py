@@ -28,9 +28,10 @@ def frames(*ms):
     return "16666666\n" + "\n".join(f"{int(t * 1_000_000)}\t{int(t * 1_000_000)}\t{int(t * 1_000_000)}" for t in ms)
 
 
-def batch(frame_text="", battery=BATTERY, current="-1500000", voltage="4000000", cpu="cpu 100 0 40 800 60 0 0 0 20 0", memory="TOTAL PSS: 262144 TOTAL RSS: 700000", status="Discharging"):
+def batch(frame_text="", battery=BATTERY, current="-1500000", voltage="4000000", cpu="cpu 100 0 40 800 60 0 0 0 20 0", memory="TOTAL PSS: 262144 TOTAL RSS: 700000", status="Discharging", service_current=""):
     sections = {"FRAMES": frame_text, "BATTERY": battery, "CURRENT": current,
-                "VOLTAGE": voltage, "SYS_STATUS": status, "CPU": cpu, "MEMORY": memory}
+                "VOLTAGE": voltage, "SYS_STATUS": status, "CPU": cpu, "MEMORY": memory,
+                "SERVICE_CURRENT": service_current}
     return "\n".join("__PHONETRACE_" + key + "__\n" + value for key, value in sections.items())
 
 
@@ -121,6 +122,72 @@ class CollectorTests(unittest.TestCase):
         sample = collector([batch(current="1500000", voltage="Permission denied")]).sample()
         self.assertEqual(sample.current_ma, 1500)
         self.assertEqual(sample.power_w, 6)
+
+    def test_battery_service_fallback_has_explicit_units_sources_and_discharge_power(self):
+        sample = collector([batch(current="", voltage="", status="", service_current="-1500000\n")]).sample()
+        self.assertEqual(sample.current_ma, -1500)
+        self.assertEqual(sample.voltage_v, 4)
+        self.assertEqual(sample.power_w, 6)
+        self.assertEqual(sample.current_source, "BatteryService.batteryCurrentMicroamps")
+        self.assertEqual(sample.voltage_source, "BatteryService.voltage_mV")
+        self.assertIn(sample.current_source, sample.power_source)
+        self.assertIn(sample.voltage_source, sample.power_source)
+
+    def test_sysfs_current_has_priority_over_service_and_preserves_driver_sign(self):
+        sample = collector([batch(current="1500000", service_current="-5000000")]).sample()
+        self.assertEqual(sample.current_ma, 1500)
+        self.assertEqual(sample.power_w, 6)
+        self.assertEqual(sample.current_source, "sysfs.battery.current_now_uA")
+        self.assertEqual(sample.voltage_source, "sysfs.battery.voltage_now_uV")
+
+    def test_service_error_text_decimal_sentinels_and_outliers_are_missing(self):
+        invalid = ("", "Unknown get option: current_now", "Permission denied", "NaN", "1.2",
+                   "-1500000\nwarning", "-2147483648", "-9223372036854775808", "100000001")
+        for value in invalid:
+            with self.subTest(value=value):
+                sample = collector([batch(current="", service_current=value)]).sample()
+                self.assertIsNone(sample.current_ma)
+                self.assertIsNone(sample.power_w)
+                self.assertEqual(sample.current_source, "unavailable")
+
+    def test_service_zero_is_recorded_but_does_not_validate_zero_load_power(self):
+        sample = collector([batch(current="", service_current="0")]).sample()
+        self.assertEqual(sample.current_ma, 0)
+        self.assertEqual(sample.current_source, "BatteryService.batteryCurrentMicroamps")
+        self.assertIsNone(sample.power_w)
+
+    def test_service_positive_current_conflicts_with_discharge_status(self):
+        sample = collector([batch(current="", status="", service_current="1500000")]).sample()
+        self.assertEqual(sample.current_ma, 1500)
+        self.assertIsNone(sample.power_w)
+        self.assertTrue(any("读数不一致" in note for note in sample.notes))
+
+    def test_service_current_is_recorded_while_charging_but_never_whole_device_power(self):
+        charging = BATTERY.replace("USB powered: false", "USB powered: true").replace("status: 3", "status: 2")
+        for current in ("1500000", "-1500000"):
+            with self.subTest(current=current):
+                sample = collector([batch(battery=charging, current="", status="", service_current=current)]).sample()
+                self.assertEqual(sample.current_ma, int(current) / 1000)
+                self.assertTrue(sample.plugged)
+                self.assertIsNone(sample.power_w)
+
+    def test_service_fallback_does_not_bypass_simulated_or_unverified_state(self):
+        for battery in (BATTERY + "(UPDATES STOPPED -- use reset to restart)\n",
+                        BATTERY.replace("USB powered: false", "USB powered: unknown"),
+                        BATTERY.replace("status: 3", "status: 2")):
+            with self.subTest(battery=battery):
+                sample = collector([batch(battery=battery, current="", status="", service_current="-1500000")]).sample()
+                self.assertEqual(sample.current_ma, -1500)
+                self.assertIsNone(sample.power_w)
+
+    def test_current_service_refresh_is_conditional_and_precedes_battery_snapshot(self):
+        command = collector([])._command(include_memory=False)
+        self.assertIn('if _pt_current=$(cat /sys/class/power_supply/battery/current_now', command)
+        self.assertIn('&& [ -n "$_pt_current" ]; then', command)
+        self.assertLess(command.index("else printf"), command.index("cmd battery get -f current_now"))
+        self.assertLess(command.index("cmd battery get -f current_now"), command.index("dumpsys battery"))
+        self.assertNotIn("battery set", command)
+        self.assertNotIn("battery unplug", command)
 
     def test_ring_overflow_does_not_join_unknown_frames(self):
         monitor = collector([batch(frames(1000, 1020)), batch(frames(2000, 2020, 2040))])

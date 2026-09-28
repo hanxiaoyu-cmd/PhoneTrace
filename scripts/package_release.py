@@ -1,6 +1,7 @@
 """Package the complete portable directory and generate a SHA-256 checksum."""
 from __future__ import annotations
 
+import argparse
 import hashlib
 import zipfile
 from pathlib import Path
@@ -8,7 +9,13 @@ from pathlib import Path
 
 def main() -> None:
     root = Path(__file__).resolve().parent.parent
-    dist = root / "dist"
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dist-root", default="dist", help="Build output directory, relative to the project or absolute (default: dist)")
+    args = parser.parse_args()
+    dist = Path(args.dist_root)
+    dist = (dist if dist.is_absolute() else root / dist).resolve()
+    if dist == root or not dist.is_relative_to(root):
+        parser.error("--dist-root must be a subdirectory of this project")
     app = dist / "PhoneTrace"
     if not (app / "PhoneTrace.exe").is_file():
         raise SystemExit("Run build.ps1 before packaging a release.")
