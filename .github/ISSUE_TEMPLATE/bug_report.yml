@@ -1,0 +1,77 @@
+name: 问题反馈 / 手机兼容性
+description: 报告连接、指标、记录或界面问题，帮助完善真机兼容性。
+title: '[问题] '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请先确认是否使用了演示模式；模拟数据不能用于判断真机采集是否准确。
+        Issue 是公开内容。请只提供必要的脱敏片段：删除手机序列号、IP 地址、无线配对码、个人路径、账号和通知内容。无需上传完整记录目录或完整系统日志。
+  - type: input
+    id: app-version
+    attributes:
+      label: PhoneTrace 版本与运行方式
+      placeholder: 例如 v0.1.0 便携版 / 源码运行（请附 commit 或分支）
+    validations:
+      required: true
+  - type: input
+    id: computer
+    attributes:
+      label: 电脑系统
+      placeholder: 例如 Windows 11 24H2 x64；源码运行可补充 Python 版本
+    validations:
+      required: true
+  - type: input
+    id: phone
+    attributes:
+      label: 手机型号与系统版本
+      description: 填品牌、型号、Android 版本及系统版本即可，不要填序列号或 IMEI。
+      placeholder: 例如 小米某型号 / Android 16 / HyperOS 版本；仅演示模式则写“不涉及”
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: 游戏与测试场景
+      description: 可填写游戏名、版本、包名、画质与帧率上限；与游戏无关时写“不涉及”。
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: 连接方式
+      options:
+        - USB
+        - 无线调试（USB 已拔出）
+        - 无线调试（仍有外接电源）
+        - 演示模式
+        - 尚未连接 / 其他
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤、预期结果与实际结果
+      placeholder: |
+        1. 打开软件并……
+        2. 采样间隔设置为……，选择自动图层 / 手动图层……
+        预期：……
+        实际：……（包括界面提示或指标缺失原因）
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 脱敏后的日志、截图或数据口径
+      description: |
+        可粘贴少量报错或 samples.jsonl 中相关行；保留指标来源、数值和 notes 有助于排查。
+        如反馈数值偏差，请说明对照工具、相同测试场景及是否存在充电、插帧或游戏悬浮层。
+        请先删去设备标识、网络地址与个人路径，并遮挡截图中的个人信息。
+      placeholder: 可选；无法脱敏时，仅描述软件显示的提示即可。
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 提交前检查
+      options:
+        - label: 我已确认没有包含序列号、IMEI、IP 地址、配对码或其他个人信息。
+          required: true

@@ -1,0 +1,23 @@
+name: 功能建议
+description: 让 PhoneTrace 更易上手、记录更完整、数据更可解释。
+title: '[建议] '
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你想解决什么问题？
+      placeholder: 描述实际使用场景、当前操作及遇到的困难。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望的软件行为
+      placeholder: 如果涉及新指标，请说明希望如何采集、展示或导出；不确定实现方式也没关系。
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 补充信息（可选）
+      description: 可以附示意图或公开资料链接；请勿填写设备序列号、网络地址、配对码或个人信息。

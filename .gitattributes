@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.png binary
+*.ico binary
+# Preserve upstream license texts without applying source whitespace checks.
+licenses/** -whitespace
